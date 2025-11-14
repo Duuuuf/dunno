@@ -1,0 +1,7 @@
+## Interface: 30305
+## Title: DefNotGargul
+## Notes: Simplified soft-res tracking addon
+## Author: Duuf
+## Version: 0.5
+Core.lua
+UI.lua
