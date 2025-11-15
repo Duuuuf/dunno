@@ -1,5 +1,6 @@
 local DNG = DefNotGargul
 DNG.activeRolls = {}
+local addonName, S = ...
 
 function DNG:CreateUI()
     if self.frame then return end
@@ -176,3 +177,4 @@ function DNG:CreateUI()
         end
     end
 end
+

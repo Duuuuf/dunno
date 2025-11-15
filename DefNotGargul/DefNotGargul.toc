@@ -3,5 +3,9 @@
 ## Notes: Simplified soft-res tracking addon
 ## Author: Duuf
 ## Version: 0.5
+
 Core.lua
+Libs\LibDeflate.lua
+Libs\LibJSON-1.0\LibJSON-1.0.lua
+SoftRes.lua
 UI.lua
