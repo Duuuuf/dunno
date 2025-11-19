@@ -1,72 +1,108 @@
 local DNG = {}
 DefNotGargul = DNG
+DNG_Saved = DNG_Saved or {}
+
+-- default settings
+DNG_Saved.frameWidth = DNG_Saved.frameWidth or 340
+DNG_Saved.frameHeight = DNG_Saved.frameHeight or 420
+DNG_Saved.autoAssign = (DNG_Saved.autoAssign ~= false)
+
 DNG.memory = {}
 
+-- event frame
 local f = CreateFrame("Frame")
-f:RegisterEvent("CHAT_MSG_LOOT")
+f:RegisterEvent("LOOT_OPENED")
 f:RegisterEvent("PLAYER_LOGIN")
 
+-- AddItem: save item and refresh UI
 function DNG:AddItem(itemLink)
-    if not itemLink or itemLink == "" then
-        print("[DNG Debug] AddItem called with empty itemLink")
-        return
-    end
-
-    print("[DNG Debug] AddItem called with:", itemLink)
+    if not itemLink or itemLink == "" then return end
 
     if not self.memory[itemLink] then
         self.memory[itemLink] = true
-        print("|cff00ff00[DefNotGargul]|r Added: " .. itemLink)
-    else
-        print("[DNG Debug] Item already in memory:", itemLink)
+        print("|cff00ff00[DefNotGargul]|r Added:", itemLink)
     end
 
     if self.UpdateMemoryUI then
-        print("[DNG Debug] Calling UpdateMemoryUI()")
         self:UpdateMemoryUI()
-    else
-        print("[DNG Debug] UpdateMemoryUI not defined yet")
     end
 end
 
+-- events
 f:SetScript("OnEvent", function(self, event, ...)
-    if event == "CHAT_MSG_LOOT" then
-        local msg = ...
-        local item = msg:match("|c%x+|Hitem:.-|h.-|h|r")
-        DNG:AddItem(item)
 
-    elseif event == "PLAYER_LOGIN" then
-        print("[DNG Debug] PLAYER_LOGIN triggered")
+    -- LOOT_OPENED: detect items from corpse
+    if event == "LOOT_OPENED" then
+        local numItems = GetNumLootItems()
+        --print("|cffffff00[DNG]|r LOOT_OPENED with", numItems, "items")
 
-        if DNG.CreateUI then
-            print("[DNG Debug] UI module loaded, creating UI...")
-            DNG:CreateUI()
-        else
-            print("[DNG Debug] UI module NOT loaded — check .toc load order!")
+        for slot = 1, numItems do
+            local lootLink = GetLootSlotLink(slot)
+
+            if lootLink then
+                local _, _, quality = GetItemInfo(lootLink)
+                --print("|cffffff00[DNG]|r Found:", lootLink, "Quality:", quality)
+
+                -- attempt DE assignment
+                if quality == 2 or quality == 3 then
+                    if DNG.HandleDEAssignment then
+                        --print("|cffffff00[DNG]|r Trying DE for slot", slot)
+                        local ok = DNG:HandleDEAssignment(slot)
+                        if ok then
+                            --print("|cff00ff00[DNG]|r DE success:", lootLink)
+                        else
+                            print("|cffff0000[DNG]|r DE failed:", lootLink)
+                        end
+                    end
+                end
+
+                -- add item to UI memory
+                if quality == 2 or quality == 3 then
+                    DNG:AddItem(lootLink)
+                end
+            end
         end
 
-        SLASH_DNG1 = "/DNG"
-        SlashCmdList["DNG"] = function()
-            if not DNG.frame then
-                print("[DNG Debug] Frame not created yet, creating...")
-                DNG:CreateUI()
-            end
+    -- PLAYER_LOGIN
+    elseif event == "PLAYER_LOGIN" then
+        print("[DNG Debug] PLAYER_LOGIN")
 
-            if DNG.frame:IsShown() then
-                DNG.frame:Hide()
-            else
-                DNG.frame:Show()
+        if DNG.CreateUI then
+            DNG:CreateUI()
+            if DNG.UpdateMemoryUI then
                 DNG:UpdateMemoryUI()
             end
         end
 
+        -- /DNG toggle
+        SLASH_DNG1 = "/DNG"
+        SlashCmdList["DNG"] = function()
+            if not DNG.frame then
+                DNG:CreateUI()
+            end
+            if DNG.frame:IsShown() then
+                DNG.frame:Hide()
+            else
+                DNG.frame:Show()
+                if DNG.UpdateMemoryUI then
+                    DNG:UpdateMemoryUI()
+                end
+            end
+            
+            if DNG.UpdateDELabel then
+                DNG:UpdateDELabel()
+            end
+
+        end
+
+        -- /DNGTEST test item
         SLASH_DNGTEST1 = "/DNGTEST"
-SlashCmdList["DNGTEST"] = function()
-    local testItemLink = select(2, GetItemInfo(25401)) or "|cff9d9d9d|Hitem:25401::::::::60:::::|h[Corroded Mace]|h|r"
-    DefNotGargul:AddItem(testItemLink)
-end
+        SlashCmdList["DNGTEST"] = function()
+            local testItemLink = select(2, GetItemInfo(25401))
+                or "|cff9d9d9d|Hitem:25401::::::::60:::::|h[Corroded Mace]|h|r"
+            DNG:AddItem(testItemLink)
+        end
 
-
-        print("|cff00ff00[DefNotGargul]|r Loaded. Use /DNG to open UI and /DNGTEST to add test items.")
+        print("|cff00ff00[DefNotGargul]|r Loaded. Use /DNG to open UI.")
     end
 end)

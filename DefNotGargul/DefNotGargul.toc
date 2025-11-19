@@ -1,11 +1,20 @@
 ## Interface: 30305
 ## Title: DefNotGargul
-## Notes: Simplified soft-res tracking addon
+## Notes: It will do something. probably.
 ## Author: Duuf
-## Version: 0.5
+## Version: 0.6
+## SavedVariables: DNG_Saved
+
 
 Core.lua
+Loot\RaidItems.lua
+Loot\Distribution.lua
+
 Libs\LibDeflate.lua
 Libs\LibJSON-1.0\LibJSON-1.0.lua
-SoftRes.lua
-UI.lua
+
+Softreserve\SoftRes.lua
+
+Interface\UI.lua
+Interface\Settings.lua
+Interface\Minimap.lua
