@@ -14,7 +14,7 @@ title:SetPoint("TOPLEFT", 16, -16)
 title:SetText("DefNotGargul Settings")
 
 local slider = CreateFrame("Slider", "DNGRollTimerSlider", panel, "OptionsSliderTemplate")
-slider:SetPoint("TOPLEFT", 20, -100)
+slider:SetPoint("TOPLEFT", 20, -300)
 slider:SetMinMaxValues(10, 30)
 slider:SetValueStep(5)
 slider:SetValue(DNG_Saved.rollTime)
