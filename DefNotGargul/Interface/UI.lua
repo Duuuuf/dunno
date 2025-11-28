@@ -319,6 +319,11 @@ end
                 if not DNG.memory[itemLink] then
                     DNG.memory[itemLink] = true
                     DNG:UpdateMemoryUI()
+                    
+                    if DNG.frame then
+                        DNG.frame:Show()
+                    end
+                    
                     --print("|cff00ff00[DefNotGargul]|r Added " .. itemLink .. " via shift-click.")
                 else
                     print("|cffffff00[DefNotGargul]|r " .. itemLink .. " is already in memory.")
