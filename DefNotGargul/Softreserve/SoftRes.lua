@@ -1,75 +1,51 @@
--- SoftRes.lua
 local addonName, S = ...
 
--- storage table
 S.SoftRes = {
     players = {},
     items = {},
 }
 
--- import GUI frame
-S.SoftResImportFrame = nil
-
--- forward declarations
-local DecodeSoftResString, ProcessSoftResData
-
--- Libs
-local LibDeflate = LibStub("LibDeflate")
-local LibJSON = LibStub("LibJSON-1.0") -- make sure the hyphen is a normal dash!
-if not LibJSON then
-    error("LibJSON-1.0 is required for SoftRes import JSON decoding.")
-end
-
--- decode base64 + zlib + JSON
-function DecodeSoftResString(str)
-    local decoded = LibDeflate:DecodeForPrint(str)
-    if not decoded then return nil end
-
-    local decompressed = LibDeflate:DecompressZlib(decoded)
-    if not decompressed then return nil end
-
-    local success, data = pcall(LibJSON.Deserialize, decompressed)
-    if not success then return nil end
-
-    return data
-end
-
-function ProcessSoftResData(data)
+------------------------------------------------------------
+-- CSV Import
+------------------------------------------------------------
+function S:ImportSoftResCSV(csv)
     wipe(S.SoftRes.players)
     wipe(S.SoftRes.items)
 
-    if not data or not data.players then
-        print("|cffff0000Invalid SR data.|r")
-        return
-    end
+    local countLines = 0
+    for line in csv:gmatch("[^\r\n]+") do
+        if not line:match("^Item,") then -- skip header
+            countLines = countLines + 1
+            local fields = {}
+            for field in line:gmatch('([^,]+)') do
+                field = field:gsub('^%"', ''):gsub('%"$', '') -- strip quotes
+                table.insert(fields, field)
+            end
 
-    for player, items in pairs(data.players) do
-        S.SoftRes.players[player] = {}
+            local itemName, itemId, boss, playerName = fields[1], tonumber(fields[2]), fields[3], fields[4]
+            if not itemId or not playerName then
+                print("|cffff0000[SoftRes]|r Skipping invalid line: " .. line)
+            else
+                -- store by player
+                S.SoftRes.players[playerName] = S.SoftRes.players[playerName] or {}
+                table.insert(S.SoftRes.players[playerName], itemId)
 
-        for _, itemID in ipairs(items) do
-            table.insert(S.SoftRes.players[player], itemID)
-            S.SoftRes.items[itemID] = S.SoftRes.items[itemID] or {}
-            table.insert(S.SoftRes.items[itemID], player)
+                -- store by item
+                S.SoftRes.items[itemId] = S.SoftRes.items[itemId] or {}
+                table.insert(S.SoftRes.items[itemId], playerName)
+
+                print("|cff00ff00[SoftRes]|r Imported SR: " .. playerName .. " -> " .. itemName .. " (ID: " .. itemId .. ")")
+            end
         end
     end
+
+    print("|cff00ff00SoftRes CSV imported! Lines processed: " .. countLines .. "|r")
 end
 
-function S:ImportSoftRes(str)
-    if not str or str:trim() == "" then
-        print("|cffff0000No soft-res string provided!|r")
-        return
-    end
 
-    local data = DecodeSoftResString(str)
-    if not data then
-        print("|cffff0000SoftRes import failed (decode error).|r")
-        return
-    end
-
-    ProcessSoftResData(data)
-    print("|cff00ff00SoftRes data imported successfully.|r")
-end
-
+------------------------------------------------------------
+-- Popup window to paste SoftRes CSV
+------------------------------------------------------------
 function S:ShowSoftResImportWindow()
     if S.SoftResImportFrame then
         S.SoftResImportFrame:Show()
@@ -77,48 +53,45 @@ function S:ShowSoftResImportWindow()
     end
 
     local f = CreateFrame("Frame", "DNGSoftResFrame", UIParent, "UIPanelDialogTemplate")
-    f:SetSize(400, 300)
+    f:SetSize(450, 350)
     f:SetPoint("CENTER")
     f:SetMovable(true)
     f:EnableMouse(true)
     f:SetToplevel(true)
-    f:SetFrameStrata("DIALOG")
 
-    f:SetScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" then self:StartMoving() end
+    f:SetScript("OnMouseDown", function(self, btn)
+        if btn == "LeftButton" then self:StartMoving() end
     end)
-    f:SetScript("OnMouseUp", function(self, button)
-        self:StopMovingOrSizing()
-    end)
+    f:SetScript("OnMouseUp", function(self) self:StopMovingOrSizing() end)
 
     f.title = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     f.title:SetPoint("TOP", 0, -10)
-    f.title:SetText("Import SoftRes.it Data")
+    f.title:SetText("Import SoftRes CSV Data")
 
-    local edit = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+    local scroll = CreateFrame("ScrollFrame", nil, f, "UIPanelScrollFrameTemplate")
+    scroll:SetPoint("TOP", f, "TOP", 0, -40)
+    scroll:SetSize(400, 220)
+
+    local edit = CreateFrame("EditBox", nil, scroll)
     edit:SetMultiLine(true)
-    edit:SetSize(360, 200)
-    edit:SetPoint("TOP", 0, -40)
-    edit:SetAutoFocus(false)
-    edit:EnableMouse(true)
-    edit:SetFontObject("GameFontHighlight")
-    edit:SetMaxLetters(99999)
-    edit:SetTextInsets(5, 5, 5, 5)
-    edit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-    edit:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-    edit:SetScript("OnEnterPressed", nil) -- allow multiline
+    edit:SetFontObject("ChatFontNormal")
+    edit:SetWidth(380)
+    edit:SetAutoFocus(true)
+
+    scroll:SetScrollChild(edit)
 
     local importBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    importBtn:SetSize(100, 24)
+    importBtn:SetSize(120, 26)
     importBtn:SetPoint("BOTTOMLEFT", 20, 20)
-    importBtn:SetText("Import")
+    importBtn:SetText("Import CSV")
+
     importBtn:SetScript("OnClick", function()
-        S:ImportSoftRes(edit:GetText())
+        S:ImportSoftResCSV(edit:GetText())
         f:Hide()
     end)
 
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    closeBtn:SetSize(100, 24)
+    closeBtn:SetSize(120, 26)
     closeBtn:SetPoint("BOTTOMRIGHT", -20, 20)
     closeBtn:SetText("Close")
     closeBtn:SetScript("OnClick", function() f:Hide() end)
@@ -126,8 +99,13 @@ function S:ShowSoftResImportWindow()
     S.SoftResImportFrame = f
 end
 
+------------------------------------------------------------
 -- Slash command
+------------------------------------------------------------
 SLASH_DNGSR1 = "/dngsr"
 SlashCmdList["DNGSR"] = function()
     S:ShowSoftResImportWindow()
 end
+
+-- DEBUG: expose SoftRes globally for testing
+_G["DNG_SoftRes"] = S.SoftRes

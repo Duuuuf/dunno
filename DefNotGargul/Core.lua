@@ -86,8 +86,11 @@ f:SetScript("OnEvent", function(self, event, ...)
         ---------------------------------------------------
         SLASH_DNGTEST1 = "/DNGTEST"
         SlashCmdList["DNGTEST"] = function()
-            local testItemLink = select(2, GetItemInfo(25401))
-                or "|cff9d9d9d|Hitem:25401::::::::60:::::|h[Corroded Mace]|h|r"
+            local testItemLink = select(2, GetItemInfo(33831))
+                or "|cff9d9d9d|Hitem:33831::::::::60:::::|h[Corroded Mace]|h|r"
+            DNG:AddItem(testItemLink)
+            local testItemLink = select(2, GetItemInfo(33322))
+                or "|cff9d9d9d|Hitem:33322::::::::60:::::|h[Corroded Mace]|h|r"
             DNG:AddItem(testItemLink)
         end
 
@@ -134,3 +137,4 @@ f:SetScript("OnEvent", function(self, event, ...)
         end
     end
 end)
+

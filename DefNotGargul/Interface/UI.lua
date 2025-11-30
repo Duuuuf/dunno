@@ -2,6 +2,17 @@ local DNG = DefNotGargul
 DNG.activeRolls = {}
 local addonName, S = ...
 
+-- Format SR player names (light blue for now, can be class colored later)
+local function FormatSRNames(players)
+    if not players or #players == 0 then return "none" end
+    local names = {}
+    for _, playerName in ipairs(players) do
+        table.insert(names, "|cff66ccff"..playerName.."|r") -- light blue
+    end
+    return table.concat(names, ", ")
+end
+
+
 -- Always ensure memory and content tables exist
 DNG.memory = DNG.memory or {}
 DNG.content = DNG.content or {}
@@ -115,7 +126,24 @@ function DNG:CreateUI()
     local time = DNG_Saved.rollTime or 30
 
     DNG.activeRolls[itemLink] = { active = true, rolls = {} }
-    SendChatMessage("ROLL STARTED for " .. itemLink .. " — type /roll! (" .. time .. " seconds)", "RAID_WARNING")
+    local itemID = tonumber(itemLink:match("item:(%d+)"))
+    local srPlayers = {}
+    if itemID and DNG_SoftRes.items[itemID] then
+        srPlayers = DNG_SoftRes.items[itemID] -- this is a list of players
+    end
+
+    local srText
+    if #srPlayers > 0 then
+        srText = table.concat(srPlayers, ", ")
+    else
+        srText = "none"
+    end
+
+    SendChatMessage("ROLL STARTED for " .. itemLink .. " — SR = " .. srText .. " — (" .. (DNG_Saved.rollTime or 30) .. "s)", "RAID_WARNING")
+
+
+
+
 
     C_Timer.After(time, function()
         if DNG.activeRolls[itemLink] and DNG.activeRolls[itemLink].active then
@@ -175,7 +203,7 @@ end
         if winnerIndex then
 
             ------------------------------------------------------
-            -- 💠 DE HANDLER COMES HERE
+            -- DE HANDLER COMES HERE
             ------------------------------------------------------
             if DNG.HandleDEAssignment and DNG:HandleDEAssignment(lootSlot, highestPlayer, winnerIndex) then
                 return -- DE assigned, stop
@@ -267,7 +295,14 @@ end
             annBtn:SetPoint("LEFT", 180, 0)
             annBtn:SetText("Announce")
             annBtn:SetScript("OnClick", function()
-                SendChatMessage("Item: " .. itemLink, "RAID_WARNING")
+                
+                local itemID = tonumber(itemLink:match("item:(%d+)"))
+                local srPlayers = S.SoftRes.items[itemID] or {}
+                local srText = FormatSRNames(srPlayers)
+                local timeStr = date("%H:%M:%S")
+
+                SendChatMessage(string.format("ANNOUNCE: %s — SR = %s", itemLink, srText), "RAID_WARNING")
+
             end)
 
             -- Discard button
