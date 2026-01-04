@@ -5,6 +5,7 @@ S.SoftRes = {
     items = {},
 }
 
+
 ------------------------------------------------------------
 -- CSV Import
 ------------------------------------------------------------
@@ -26,15 +27,24 @@ function S:ImportSoftResCSV(csv)
             if not itemId or not playerName then
                 print("|cffff0000[SoftRes]|r Skipping invalid line: " .. line)
             else
-                -- store by player
-                S.SoftRes.players[playerName] = S.SoftRes.players[playerName] or {}
-                table.insert(S.SoftRes.players[playerName], itemId)
+                -- store by player (also store class)
+                S.SoftRes.players[playerName] = S.SoftRes.players[playerName] or {
+                    class = fields[5],
+                    items = {}
+                }
 
-                -- store by item
+                table.insert(S.SoftRes.players[playerName].items, itemId)
+
+
+                -- store by item (store full objects instead of just names)
                 S.SoftRes.items[itemId] = S.SoftRes.items[itemId] or {}
-                table.insert(S.SoftRes.items[itemId], playerName)
+                table.insert(S.SoftRes.items[itemId], {
+                    name = playerName,
+                    class = fields[5],  -- this is where the class is in the CSV
+                })
 
-                print("|cff00ff00[SoftRes]|r Imported SR: " .. playerName .. " -> " .. itemName .. " (ID: " .. itemId .. ")")
+
+                
             end
         end
     end

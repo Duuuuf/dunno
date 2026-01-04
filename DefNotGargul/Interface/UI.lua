@@ -2,6 +2,19 @@ local DNG = DefNotGargul
 DNG.activeRolls = {}
 local addonName, S = ...
 
+S.CLASS_COLORS = {
+    Druid    = "|cffFF7D0A",
+    Hunter   = "|cffABD473",
+    Mage     = "|cff69CCF0",
+    Paladin  = "|cffF58CBA",
+    Priest   = "|cffFFFFFF",
+    Rogue    = "|cffFFF569",
+    Shaman   = "|cff0070DE",
+    Warlock  = "|cff9482C9",
+    Warrior  = "|cffC79C6E",
+}
+
+
 -- Format SR player names (light blue for now, can be class colored later)
 local function FormatSRNames(players)
     if not players or #players == 0 then return "none" end
@@ -17,7 +30,7 @@ end
 DNG.memory = DNG.memory or {}
 DNG.content = DNG.content or {}
 
--- ✔ NEW: Apply saved button/icon sizes
+-- Apply saved button/icon sizes
 function DNG:ApplyButtonSizes()
     -- Default size if not saved
     DNG_Saved.buttonSize = DNG_Saved.buttonSize or 22
@@ -132,17 +145,32 @@ function DNG:CreateUI()
         srPlayers = DNG_SoftRes.items[itemID] -- this is a list of players
     end
 
-    local srText
-    if #srPlayers > 0 then
-        srText = table.concat(srPlayers, ", ")
-    else
-        srText = "none"
+    -- Convert SR entries { {name,class}, {name,class}, ... } into "Name x2, OtherName"
+local srText = "none"
+
+if #srPlayers > 0 then
+    local countTable = {}
+
+    for _, entry in ipairs(srPlayers) do
+        if entry.name then
+            countTable[entry.name] = (countTable[entry.name] or 0) + 1
+        end
     end
 
+    local output = {}
+    for playerName, count in pairs(countTable) do
+        if count > 1 then
+            table.insert(output, playerName .. " x" .. count)
+        else
+            table.insert(output, playerName)
+        end
+    end
+
+    srText = table.concat(output, ", ")
+end
+
+
     SendChatMessage("ROLL STARTED for " .. itemLink .. " — SR = " .. srText .. " — (" .. (DNG_Saved.rollTime or 30) .. "s)", "RAID_WARNING")
-
-
-
 
 
     C_Timer.After(time, function()
@@ -202,16 +230,12 @@ end
 
         if winnerIndex then
 
-            ------------------------------------------------------
-            -- DE HANDLER COMES HERE
-            ------------------------------------------------------
+            -- DE HANDLER 
             if DNG.HandleDEAssignment and DNG:HandleDEAssignment(lootSlot, highestPlayer, winnerIndex) then
                 return -- DE assigned, stop
             end
 
-            ------------------------------------------------------
             -- Normal auto-assign
-            ------------------------------------------------------
             DNG:AssignLoot(lootSlot, highestPlayer, winnerIndex)
 
         else
@@ -263,13 +287,62 @@ end
             icon.icon:SetAllPoints()
             icon.icon:SetTexture(itemTexture)
             icon:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetHyperlink(itemLink)
-                GameTooltip:Show()
-            end)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetHyperlink(itemLink)
+
+            local itemID = tonumber(itemLink:match("item:(%d+)"))
+            local srList = (itemID and DNG_SoftRes.items[itemID]) or {}
+
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cffFFD100SoftRes:|r")
+
+            if #srList > 0 then
+                -----------------------------------------------------
+                -- 1) Count how many times each player SR’d the item
+                -----------------------------------------------------
+                local counts = {}
+                for _, entry in ipairs(srList) do
+                    local name = entry.name
+                    if name then
+                        counts[name] = (counts[name] or 0) + 1
+                    end
+                end
+
+                -----------------------------------------------------
+                -- 2) Display each player only once, with class color
+                -----------------------------------------------------
+                -- Make unique list
+                local added = {}
+                for _, entry in ipairs(srList) do
+                    local name = entry.name
+                    if name and not added[name] then
+                        added[name] = true
+
+                        local class = entry.class or "unknown"
+                        local classColor = S.CLASS_COLORS[class] or "|cffFFFFFF"
+
+                        local countString = ""
+                        if counts[name] > 1 then
+                            countString = " |cffaaaaaa×" .. counts[name] .. "|r"
+                        end
+
+                        GameTooltip:AddLine("  • " .. classColor .. name .. "|r" .. countString)
+                    end
+                end
+            else
+                GameTooltip:AddLine("  none")
+            end
+
+
+
+            GameTooltip:Show()
+        end)
+
+
             icon:SetScript("OnLeave", function()
                 GameTooltip:Hide()
             end)
+
 
             -- Start Roll button
             local startRollBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
@@ -289,26 +362,14 @@ end
                 self:EndRoll(itemLink)
             end)
 
-            -- Announce button
-            local annBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
-            annBtn:SetSize(70, 22)
-            annBtn:SetPoint("LEFT", 180, 0)
-            annBtn:SetText("Announce")
-            annBtn:SetScript("OnClick", function()
-                
-                local itemID = tonumber(itemLink:match("item:(%d+)"))
-                local srPlayers = S.SoftRes.items[itemID] or {}
-                local srText = FormatSRNames(srPlayers)
-                local timeStr = date("%H:%M:%S")
+            
 
-                SendChatMessage(string.format("ANNOUNCE: %s — SR = %s", itemLink, srText), "RAID_WARNING")
-
-            end)
+            
 
             -- Discard button
             local delBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
             delBtn:SetSize(60, 22)
-            delBtn:SetPoint("LEFT", 255, 0)
+            delBtn:SetPoint("LEFT", 180, 0)
             delBtn:SetText("Discard")
             delBtn:SetScript("OnClick", function()
                 self.memory[itemLink] = nil
@@ -468,15 +529,7 @@ function DNG:ApplyButtonSizes()
             end
         end
 
-        -- Announce
-        if line.annBtn then
-            if DNG_Saved.annVisible then
-                line.annBtn:Show()
-                line.annBtn:SetSize(DNG_Saved.annWidth, defaultButtonHeight)
-            else
-                line.annBtn:Hide()
-            end
-        end
+        
 
         -- Delete
         if line.delBtn then
