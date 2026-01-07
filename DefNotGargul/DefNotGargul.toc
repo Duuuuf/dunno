@@ -20,3 +20,5 @@ Softreserve\SoftRes.lua
 Interface\UI.lua
 Interface\Settings.lua
 Interface\Minimap.lua
+Interface\History.lua
+Interface\HistoryTest.lua

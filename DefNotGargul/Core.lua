@@ -1,26 +1,21 @@
 local DNG = {}
 DefNotGargul = DNG
-DNG_Saved = DNG_Saved or {}
 
--- Default settings
-DNG_Saved.frameWidth = DNG_Saved.frameWidth or 340
-DNG_Saved.frameHeight = DNG_Saved.frameHeight or 420
-DNG_Saved.autoAssign = (DNG_Saved.autoAssign ~= false)
-DNG_Saved.deTarget = DNG_Saved.deTarget or ""      -- <-- ensure exists
-
+-- Initialize internal tables
 DNG.memory = {}
 
--- Event frame
+-- Create the main event frame
 local f = CreateFrame("Frame")
-f:RegisterEvent("PLAYER_LOGIN")   -- Only register PLAYER_LOGIN here!
+f:RegisterEvent("ADDON_LOADED") -- Required for saving data
+f:RegisterEvent("PLAYER_LOGIN") -- Required for UI setup
 
--- AddItem: save item and refresh UI
+-- Function to add items to the UI list
 function DNG:AddItem(itemLink)
     if not itemLink or itemLink == "" then return end
 
     if not self.memory[itemLink] then
         self.memory[itemLink] = true
-        print("|cff00ff00[DefNotGargul]|r Added:", itemLink)
+        -- print("|cff00ff00[DefNotGargul]|r Added:", itemLink)
     end
 
     if self.UpdateMemoryUI then
@@ -28,76 +23,79 @@ function DNG:AddItem(itemLink)
     end
 end
 
-
--- Event handling
+-- Main Event Handler
 f:SetScript("OnEvent", function(self, event, ...)
+    local arg1 = ...
 
-    if event == "PLAYER_LOGIN" then
-        print("[DNG Debug] PLAYER_LOGIN")
+    ---------------------------------------------------
+    -- 1) ADDON_LOADED: Runs when data is read from disk
+    ---------------------------------------------------
+    if event == "ADDON_LOADED" and arg1 == "DefNotGargul" then
+        -- Initialize the master SavedVariable table
+        DNG_Saved = DNG_Saved or {}
 
-        ---------------------------------------------------
-        -- 1) REGISTER LOOT EVENT *AFTER* SAVED VAR LOAD --
-        ---------------------------------------------------
-        self:RegisterEvent("LOOT_OPENED")
-        print("[DNG Debug] LOOT_OPENED registered AFTER login")
+        -- Roster thing
+        DNG_Saved.Roster = DNG_Saved.Roster or {}
+        
+        -- Link History: This makes sure DNG.History points to the Save File
+        DNG_Saved.History = DNG_Saved.History or { raids = {} }
+        DNG.History = DNG_Saved.History 
 
-
-        ---------------------------------------------------
-        -- 2) CREATE UI NOW THAT SAVED VARS ARE READY
-        ---------------------------------------------------
-        if DNG.CreateUI then
-            DNG:CreateUI()
-
-            if DNG.UpdateMemoryUI then
-                DNG:UpdateMemoryUI()
-            end
-
-            if DNG.UpdateDELabel then
-                DNG:UpdateDELabel()       -- FIX first-loot DE bug
-            end
+        -- Load or Set Default Settings
+        DNG_Saved.frameWidth = DNG_Saved.frameWidth or 340
+        DNG_Saved.frameHeight = DNG_Saved.frameHeight or 420
+        DNG_Saved.autoAssign = (DNG_Saved.autoAssign ~= false)
+        DNG_Saved.deTarget = DNG_Saved.deTarget or ""
+        
+        -- Initialize the Minimap Icon if that module is loaded
+        if DNG.InitMinimap then
+            DNG:InitMinimap()
         end
 
+        -- print("|cff00ff00[DNG]|r Data successfully loaded and History linked.")
 
-        ---------------------------------------------------
-        -- 3) /DNG toggle UI
-        ---------------------------------------------------
+    ---------------------------------------------------
+    -- 2) PLAYER_LOGIN: Runs when you enter the world
+    ---------------------------------------------------
+    elseif event == "PLAYER_LOGIN" then
+        -- Register Loot event
+        self:RegisterEvent("LOOT_OPENED")
+
+        -- Create the UI
+        if DNG.CreateUI then
+            DNG:CreateUI()
+            if DNG.UpdateMemoryUI then DNG:UpdateMemoryUI() end
+            if DNG.UpdateDELabel then DNG:UpdateDELabel() end
+        end
+
+        -- Slash Command: /DNG
         SLASH_DNG1 = "/DNG"
         SlashCmdList["DNG"] = function()
-            if not DNG.frame then
-                DNG:CreateUI()
-            end
-
+            if not DNG.frame then DNG:CreateUI() end
             if DNG.frame:IsShown() then
                 DNG.frame:Hide()
             else
                 DNG.frame:Show()
-                if DNG.UpdateMemoryUI then
-                    DNG:UpdateMemoryUI()
-                end
-                if DNG.UpdateDELabel then
-                    DNG:UpdateDELabel()
-                end
+                if DNG.UpdateMemoryUI then DNG:UpdateMemoryUI() end
+                if DNG.UpdateDELabel then DNG:UpdateDELabel() end
             end
         end
 
-
-        ---------------------------------------------------
-        -- 4) Test command
-        ---------------------------------------------------
+        -- Slash Command: /DNGTEST
         SLASH_DNGTEST1 = "/DNGTEST"
         SlashCmdList["DNGTEST"] = function()
             local testItemLink = select(2, GetItemInfo(33831))
                 or "|cff9d9d9d|Hitem:33831::::::::60:::::|h[Corroded Mace]|h|r"
             DNG:AddItem(testItemLink)
-            local testItemLink = select(2, GetItemInfo(33322))
+            local testItemLink2 = select(2, GetItemInfo(33322))
                 or "|cff9d9d9d|Hitem:33322::::::::60:::::|h[Corroded Mace]|h|r"
-            DNG:AddItem(testItemLink)
+            DNG:AddItem(testItemLink2)
         end
 
-        print("|cff00ff00[DefNotGargul]|r Loaded. Use /DNG to open UI.")
+        print("|cff00ff00[DefNotGargul]|r Loaded. Use /DNG or /dnghistory.")
 
     ---------------------------------------------------
-    -- LOOT_OPENED (NOW RUNS AT THE RIGHT TIME)
+    -- 3) LOOT_OPENED: Logic for detecting items
     ---------------------------------------------------
     elseif event == "LOOT_OPENED" then
         local numItems = GetNumLootItems()
@@ -116,25 +114,51 @@ f:SetScript("OnEvent", function(self, event, ...)
 
                 -- Add to UI if whitelisted
                 if isWhitelisted then
-                DNG:AddItem(lootLink)
+                    DNG:AddItem(lootLink)
                 end
 
-                -- Auto DE for green/blue trash (not whitelisted)
+                -- Auto DE for green/blue trash
                 if quality == 2 or quality == 3 then
                     if DNG.HandleDEAssignmentQueued then
                         DNG:HandleDEAssignmentQueued(slot)
                     end
 
-                    -- Add to UI only if whitelisted
-                    local itemID = tonumber(lootLink:match("item:(%d+):"))
+                    -- Check whitelist again in case a blue item is on it
                     if DNG.RAID_ITEM_IDS and DNG.RAID_ITEM_IDS[itemID] then
                         DNG:AddItem(lootLink)
                     end
                 end
-
-
             end
         end
     end
 end)
 
+StaticPopupDialogs["DNG_LC_CONFIRM"] = {
+    text = "Enter winner name or LC Note for %s:",
+    button1 = "Save",
+    button2 = "Cancel",
+    hasEditBox = 1,
+    OnAccept = function(self, data)
+        local text = self.editBox:GetText()
+        if text ~= "" then
+            -- We call a new function to log this manually
+            DNG:LogManualLoot(data.itemLink, text)
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+}
+
+SLASH_DNGROSTER1 = "/dngroster"
+SlashCmdList["DNGROSTER"] = function(msg)
+    local name, class = msg:match("^(%S+)%s+(%S+)$")
+    if name and class then
+        -- Class needs to be capitalized correctly for colors (e.g., "Mage")
+        class = class:gsub("^%l", string.upper)
+        DNG_Saved.Roster[name] = class
+        print("|cff00ff00[DNG]|r Added to Roster: " .. name .. " (" .. class .. ")")
+    else
+        print("|cffff0000[DNG]|r Usage: /dngroster Name Class (e.g., /dngroster Fatchicken Druid)")
+    end
+end

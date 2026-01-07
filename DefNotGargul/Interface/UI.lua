@@ -2,7 +2,7 @@ local DNG = DefNotGargul
 DNG.activeRolls = {}
 local addonName, S = ...
 
-S.CLASS_COLORS = {
+DNG.CLASS_COLORS = {
     Druid    = "|cffFF7D0A",
     Hunter   = "|cffABD473",
     Mage     = "|cff69CCF0",
@@ -94,7 +94,7 @@ function DNG:CreateUI()
     -- Title text
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     title:SetPoint("TOP", 0, -10)
-    title:SetText("DefNotGargul")
+    title:SetText("u suck")
 
     -- Create scroll frame
     self.scrollFrame = CreateFrame("ScrollFrame", "DNGScrollFrame", frame, "UIPanelScrollFrameTemplate")
@@ -319,7 +319,8 @@ end
                         added[name] = true
 
                         local class = entry.class or "unknown"
-                        local classColor = S.CLASS_COLORS[class] or "|cffFFFFFF"
+                        local classColor = DNG.CLASS_COLORS[class] or "|cffFFFFFF"
+
 
                         local countString = ""
                         if counts[name] > 1 then
@@ -377,7 +378,19 @@ end
                 self:CheckIfEmpty()
             end)
 
-            -- ✔ NEW: Store references for resizing
+            -- LC Button
+            local lcBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            lcBtn:SetSize(40, 22)
+            lcBtn:SetPoint("LEFT", 245, 0) -- Adjusted position
+            lcBtn:SetText("LC")
+            lcBtn:SetScript("OnClick", function()
+                local dialog = StaticPopup_Show("DNG_LC_CONFIRM", itemLink)
+                if dialog then
+                    dialog.data = { itemLink = itemLink }
+                end
+            end)
+
+            -- Store references for resizing
             line.icon = icon
             line.startRollBtn = startRollBtn
             line.endRollBtn = endRollBtn
@@ -406,7 +419,7 @@ end
 
     -- Hook shift-clicks in bags to add items to memory
     hooksecurefunc("ContainerFrameItemButton_OnModifiedClick", function(self, button)
-        if IsShiftKeyDown() and button == "LeftButton" then
+        if IsShiftKeyDown() and button == "RightButton" then
             local bag = self:GetParent():GetID()
             local slot = self:GetID()
             local itemLink = GetContainerItemLink(bag, slot)

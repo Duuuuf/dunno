@@ -1,8 +1,5 @@
 local DNG = DefNotGargul
 
--- Store who is the disenchanter
-DNG_Saved.deTarget = DNG_Saved.deTarget or nil
-
 ------------------------------------------------------------
 -- /dngde command
 ------------------------------------------------------------
@@ -59,11 +56,20 @@ function DNG:HandleDEAssignmentQueued(lootSlot, startTime)
     end
 
     -- Candidate list not ready yet
-    if GetTime() - startTime < 3 then  -- retry for up to 3 seconds
+    -- Candidate list not ready yet (REPLACED C_Timer for 3.3.5)
+    if GetTime() - startTime < 3 then 
         if not deQueue[lootSlot] then
             deQueue[lootSlot] = true
-            C_Timer.After(0.1, function()
-                DNG:HandleDEAssignmentQueued(lootSlot, startTime)
+            
+            -- Simple 3.3.5 delay logic using a temporary frame
+            local delayFrame = CreateFrame("Frame")
+            local delayTime = 0
+            delayFrame:SetScript("OnUpdate", function(self, elapsed)
+                delayTime = delayTime + elapsed
+                if delayTime >= 0.1 then
+                    self:SetScript("OnUpdate", nil)
+                    DNG:HandleDEAssignmentQueued(lootSlot, startTime)
+                end
             end)
         end
         return false
