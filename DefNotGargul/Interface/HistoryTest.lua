@@ -35,7 +35,43 @@ SlashCmdList["DNGHISTORYTEST"] = function()
                 rolls = {
                     { player = "Dubmass", roll = 100, class = "Mage" },
                 }
-            }
+            },
+            {
+                itemID = 33831,
+                winner = "Fatchicken",
+                winnerClass = "Druid",
+                rolls = {
+                    { player = "Fatchicken", roll = 98, class = "Druid" },
+                    { player = "Dubmass", roll = 76, class = "Mage" },
+                }
+            },
+            {
+                itemID = 33831,
+                winner = "Fatchicken",
+                winnerClass = "Druid",
+                rolls = {
+                    { player = "Fatchicken", roll = 98, class = "Druid" },
+                    { player = "Dubmass", roll = 76, class = "Mage" },
+                }
+            },
+            {
+                itemID = 33831,
+                winner = "Fatchicken",
+                winnerClass = "Druid",
+                rolls = {
+                    { player = "Fatchicken", roll = 98, class = "Druid" },
+                    { player = "Dubmass", roll = 76, class = "Mage" },
+                }
+            },
+            {
+                itemID = 33831,
+                winner = "Gpapi",
+                winnerClass = "Priest",
+                rolls = {
+                    { player = "Fatchicken", roll = 98, class = "Druid" },
+                    { player = "Dubmass", roll = 76, class = "Mage" },
+                }
+            },
         }
     }
 

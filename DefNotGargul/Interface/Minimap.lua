@@ -3,7 +3,7 @@ local DNG = DefNotGargul
 local LDB = LibStub("LibDataBroker-1.1"):NewDataObject("DefNotGargul", {
     type = "launcher",
     text = "DefNotGargul",
-    icon = "Interface\\Icons\\INV_Misc_QuestionMark",
+    icon = "Interface\\AddOns\\DefNotGargul\\Media\\indecisive.tga",
     OnClick = function(_, button)
         if button == "LeftButton" then
             if DNG.frame then

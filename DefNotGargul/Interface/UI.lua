@@ -3,15 +3,17 @@ DNG.activeRolls = {}
 local addonName, S = ...
 
 DNG.CLASS_COLORS = {
-    Druid    = "|cffFF7D0A",
-    Hunter   = "|cffABD473",
-    Mage     = "|cff69CCF0",
-    Paladin  = "|cffF58CBA",
-    Priest   = "|cffFFFFFF",
-    Rogue    = "|cffFFF569",
-    Shaman   = "|cff0070DE",
-    Warlock  = "|cff9482C9",
-    Warrior  = "|cffC79C6E",
+    ["DRUID"]   = "|cffFF7D0A",
+    ["HUNTER"]  = "|cffABD473",
+    ["MAGE"]    = "|cff69CCF0",
+    ["PALADIN"] = "|cffF58CBA",
+    ["PRIEST"]  = "|cffFFFFFF",
+    ["ROGUE"]   = "|cffFFF569",
+    ["SHAMAN"]  = "|cff0070DE",
+    ["WARLOCK"] = "|cff9482C9",
+    ["WARRIOR"] = "|cffC79C6E",
+    ["DEATHKNIGHT"] = "|cffC41F3B",
+    ["NONE"]    = "|cffAAAAAA", -- Gray for LC notes
 }
 
 
@@ -114,14 +116,13 @@ function DNG:CreateUI()
     rollListener:RegisterEvent("CHAT_MSG_SYSTEM")
     rollListener:SetScript("OnEvent", function(_, _, msg)
         local player, roll, low, high = msg:match("(.+) rolls (%d+) %((%d+)%-(%d+)%)")
-        if player and roll and low and high then
+        if player and roll then
             roll = tonumber(roll)
-            low = tonumber(low)
-            high = tonumber(high)
-            for itemLink, rollData in pairs(DNG.activeRolls) do
-                if rollData.active and roll >= low and roll <= high then
+            -- Iterate through all active rolls to see which one this roll belongs to
+            for dropID, rollData in pairs(DNG.activeRolls) do
+                if rollData.active then
                     rollData.rolls[player] = roll
-                    print("|cff00ff00[DefNotGargul]|r " .. player .. " rolled " .. roll .. " for " .. itemLink)
+                    -- print("|cff00ff00[DNG]|r " .. player .. " rolled " .. roll .. " for item.")
                 end
             end
         end
@@ -129,69 +130,66 @@ function DNG:CreateUI()
     
 
     -- Start a roll for an item
-    function self:StartRoll(itemLink)
-    if DNG.activeRolls[itemLink] and DNG.activeRolls[itemLink].active then
-        print("|cffff0000[DefNotGargul]|r A roll for this item is already active!")
-        return
-    end
-
-    -- read timer from settings (default to 30 if missing)
-    local time = DNG_Saved.rollTime or 30
-
-    DNG.activeRolls[itemLink] = { active = true, rolls = {} }
-    local itemID = tonumber(itemLink:match("item:(%d+)"))
-    local srPlayers = {}
-    if itemID and DNG_SoftRes.items[itemID] then
-        srPlayers = DNG_SoftRes.items[itemID] -- this is a list of players
-    end
-
-    -- Convert SR entries { {name,class}, {name,class}, ... } into "Name x2, OtherName"
-local srText = "none"
-
-if #srPlayers > 0 then
-    local countTable = {}
-
-    for _, entry in ipairs(srPlayers) do
-        if entry.name then
-            countTable[entry.name] = (countTable[entry.name] or 0) + 1
-        end
-    end
-
-    local output = {}
-    for playerName, count in pairs(countTable) do
-        if count > 1 then
-            table.insert(output, playerName .. " x" .. count)
-        else
-            table.insert(output, playerName)
-        end
-    end
-
-    srText = table.concat(output, ", ")
-end
-
-
-    SendChatMessage("ROLL STARTED for " .. itemLink .. " — SR = " .. srText .. " — (" .. (DNG_Saved.rollTime or 30) .. "s)", "RAID_WARNING")
-
-
-    C_Timer.After(time, function()
-        if DNG.activeRolls[itemLink] and DNG.activeRolls[itemLink].active then
-            self:EndRoll(itemLink)
-        end
-    end)
-end
-
-
-    -- End a roll for an item
-    function self:EndRoll(itemLink)
-        local rollData = DNG.activeRolls[itemLink]
-        if not rollData or not rollData.active then
-            print("|cffff0000[DefNotGargul]|r No active roll for " .. itemLink)
+    function self:StartRoll(itemLink, dropID)
+        -- Use dropID to check if this specific instance is already rolling
+        if DNG.activeRolls[dropID] and DNG.activeRolls[dropID].active then
+            print("|cffff0000[DefNotGargul]|r A roll for this specific item is already active!")
             return
         end
+
+        local timeLimit = DNG_Saved.rollTime or 30
+        
+        -- Store the roll data using dropID as the key
+        DNG.activeRolls[dropID] = { 
+            active = true, 
+            rolls = {}, 
+            itemLink = itemLink -- store the link inside for easy access
+        }
+
+        local itemID = tonumber(itemLink:match("item:(%d+)"))
+        local srText = "none"
+
+        -- Soft Reserve Check (Using your existing SoftRes logic)
+        if itemID and DNG_SoftRes and DNG_SoftRes.items[itemID] then
+            local srPlayers = DNG_SoftRes.items[itemID]
+            if #srPlayers > 0 then
+                local countTable = {}
+                for _, entry in ipairs(srPlayers) do
+                    if entry.name then countTable[entry.name] = (countTable[entry.name] or 0) + 1 end
+                end
+                local output = {}
+                for playerName, count in pairs(countTable) do
+                    table.insert(output, playerName .. (count > 1 and (" x" .. count) or ""))
+                end
+                srText = table.concat(output, ", ")
+            end
+        end
+
+        SendChatMessage("ROLL STARTED for " .. itemLink .. " — SR = " .. srText .. " — (" .. timeLimit .. "s)", "RAID_WARNING")
+
+        -- 3.3.5 Timer Logic
+        local timerFrame = CreateFrame("Frame")
+        local elapsed = 0
+        timerFrame:SetScript("OnUpdate", function(sf, e)
+            elapsed = elapsed + e
+            if elapsed >= timeLimit then
+                sf:SetScript("OnUpdate", nil)
+                if DNG.activeRolls[dropID] and DNG.activeRolls[dropID].active then
+                    self:EndRoll(itemLink, dropID)
+                end
+            end
+        end)
+    end
+
+    -- End a roll for an item
+    function self:EndRoll(itemLink, dropID)
+        local rollData = DNG.activeRolls[dropID]
+        if not rollData or not rollData.active then return end
 
         rollData.active = false
         local highestPlayer, highestRoll = nil, -1
 
+        -- 1. Find the Winner
         for player, roll in pairs(rollData.rolls) do
             if roll > highestRoll then
                 highestRoll = roll
@@ -200,70 +198,58 @@ end
         end
 
         if highestPlayer then
-        -- Always announce
-        SendChatMessage("WINNER of " .. itemLink .. ": " .. highestPlayer .. " (" .. highestRoll .. ")", "RAID_WARNING")
-
-
-        -- Auto-assign logic
-
-        if DNG_Saved.autoAssign and DNG.AssignLoot then
-        -- Find lootSlot inside memory list
-            local lootSlot = nil
-            for i = 1, GetNumLootItems() do
-            local link = GetLootSlotLink(i)
-                if link == itemLink then
-                lootSlot = i
-                break
-            end
-        end
-
-        if lootSlot then
-        -- Determine candidate index (1–40)
-        local winnerIndex = nil
-        for i = 1, 40 do
-            local cand = GetMasterLootCandidate(lootSlot, i)
-            if cand == highestPlayer then
-                winnerIndex = i
-                break
-            end
-        end
-
-        if winnerIndex then
-
-            -- DE HANDLER 
-            if DNG.HandleDEAssignment and DNG:HandleDEAssignment(lootSlot, highestPlayer, winnerIndex) then
-                return -- DE assigned, stop
+            local _, englishClass = UnitClass(highestPlayer)
+            
+            -- Prepare rolls for History
+            local historyRolls = {}
+            for name, val in pairs(rollData.rolls) do
+                local _, pClass = UnitClass(name)
+                table.insert(historyRolls, { player = name, roll = val, class = pClass or "NONE" })
             end
 
-            -- Normal auto-assign
-            DNG:AssignLoot(lootSlot, highestPlayer, winnerIndex)
+            -- 2. LOG TO HISTORY
+            if DNG.LogLootAssignment then
+                DNG:LogLootAssignment(itemLink, highestPlayer, englishClass or "NONE", historyRolls, "Roll Won", dropID)
+            end
 
+            SendChatMessage("WINNER of " .. itemLink .. ": " .. highestPlayer .. " (" .. highestRoll .. ")", "RAID_WARNING")
+
+            -- 3. AUTO-ASSIGN (Master Loot)
+            if DNG_Saved.autoAssign and DNG.AssignLoot then
+                local lootSlot = nil
+                for i = 1, GetNumLootItems() do
+                    if GetLootSlotLink(i) == itemLink then
+                        lootSlot = i
+                        break
+                    end
+                end
+
+                if lootSlot then
+                    local winnerIndex = nil
+                    for i = 1, 40 do
+                        if GetMasterLootCandidate(lootSlot, i) == highestPlayer then
+                            winnerIndex = i
+                            break
+                        end
+                    end
+                    if winnerIndex then
+                        DNG:AssignLoot(lootSlot, highestPlayer, winnerIndex)
+                    end
+                end
+            end
+            
+            -- NOTE: We removed the cleanup code here so the item stays in the list!
         else
-            print("|cffff0000[DNG]|r Could not auto-assign: winner not found as master loot candidate.")
+            SendChatMessage("No valid rolls for " .. itemLink, "RAID_WARNING")
         end
-    else
-        print("|cffff0000[DNG]|r Could not auto-assign: lootSlot not found for item.")
-    end
-else
-    print("|cffffff00[DNG]|r Auto-assign disabled. Lootmaster must trade manually.")
-end
-
-
-else
-    SendChatMessage("No valid rolls for " .. itemLink, "RAID_WARNING")
-end
-
     end
 
     -- Update memory UI
     function self:UpdateMemoryUI()
-        -- Clear previous UI elements safely
         for _, child in ipairs(self.content) do
             if child then
                 if child.Hide then child:Hide() end
-                if child.SetParent and type(child.SetParent) == "function" and child:GetObjectType() == "Frame" then
-                    child:SetParent(nil)
-                end
+                if child.SetParent then child:SetParent(nil) end
             end
         end
         self.content = {}
@@ -271,13 +257,14 @@ end
         local y = -5
         local count = 0
 
-        for itemLink, _ in pairs(self.memory) do
+        for index, itemData in ipairs(DNG.memory) do
+            local itemLink = itemData.link
+            local dropID = itemData.id 
+
             count = count + 1
             local line = CreateFrame("Frame", nil, self.scrollChild)
-            line:SetSize(260, 40)
+            line:SetSize(400, 40) -- Increased width for more buttons
             line:SetPoint("TOPLEFT", 0, y)
-
-            local itemTexture = GetItemIcon(itemLink) or "Interface\\Icons\\INV_Misc_QuestionMark"
 
             -- Item icon
             local icon = CreateFrame("Button", nil, line)
@@ -285,136 +272,76 @@ end
             icon:SetPoint("LEFT", 0, 0)
             icon.icon = icon:CreateTexture(nil, "BACKGROUND")
             icon.icon:SetAllPoints()
-            icon.icon:SetTexture(itemTexture)
-            icon:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetHyperlink(itemLink)
+            icon.icon:SetTexture(GetItemIcon(itemLink) or "Interface\\Icons\\INV_Misc_QuestionMark")
+            icon:SetScript("OnEnter", function(s) GameTooltip:SetOwner(s, "ANCHOR_RIGHT"); GameTooltip:SetHyperlink(itemLink); GameTooltip:Show() end)
+            icon:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
-            local itemID = tonumber(itemLink:match("item:(%d+)"))
-            local srList = (itemID and DNG_SoftRes.items[itemID]) or {}
+            -- 1. Start Roll (X: 35)
+            local startBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            startBtn:SetSize(65, 22)
+            startBtn:SetPoint("LEFT", 37, 0)
+            startBtn:SetText("Start Roll")
+            startBtn:SetScript("OnClick", function() self:StartRoll(itemLink, dropID) end)
 
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("|cffFFD100SoftRes:|r")
+            -- 2. End Roll (X: 100)
+            local endBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            endBtn:SetSize(60, 22)
+            endBtn:SetPoint("LEFT", 110, 0)
+            endBtn:SetText("End Roll")
+            endBtn:SetScript("OnClick", function() self:EndRoll(itemLink, dropID) end)
 
-            if #srList > 0 then
-                -----------------------------------------------------
-                -- 1) Count how many times each player SR’d the item
-                -----------------------------------------------------
-                local counts = {}
-                for _, entry in ipairs(srList) do
-                    local name = entry.name
-                    if name then
-                        counts[name] = (counts[name] or 0) + 1
-                    end
+            -- 3. Announce (X: 160)
+            local annBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            annBtn:SetSize(55, 22)
+            annBtn:SetPoint("LEFT", 173, 0)
+            annBtn:SetText("Announce")
+            annBtn:SetScript("OnClick", function() SendChatMessage("LOOT: " .. itemLink .. "  ", "RAID_WARNING") end)
+
+            -- 4. LC (X: 215)
+            local lcBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            lcBtn:SetSize(40, 22)
+            lcBtn:SetPoint("LEFT", 232, 0)
+            lcBtn:SetText("LC")
+            lcBtn:SetScript("OnClick", function()
+                local dialog = StaticPopup_Show("DNG_LC_CONFIRM", itemLink)
+                if dialog then dialog.data = { itemLink = itemLink, dropID = dropID } end
+            end)
+
+            -- 5. DE (X: 255) - THE MISSING BUTTON
+            local deBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            deBtn:SetSize(40, 22)
+            deBtn:SetPoint("LEFT", 275, 0)
+            deBtn:SetText("DE")
+            deBtn:SetScript("OnClick", function()
+                if DNG.LogLootAssignment then
+                    DNG:LogLootAssignment(itemLink, "Disenchanted", "NONE", {}, "DE", dropID)
                 end
-
-                -----------------------------------------------------
-                -- 2) Display each player only once, with class color
-                -----------------------------------------------------
-                -- Make unique list
-                local added = {}
-                for _, entry in ipairs(srList) do
-                    local name = entry.name
-                    if name and not added[name] then
-                        added[name] = true
-
-                        local class = entry.class or "unknown"
-                        local classColor = DNG.CLASS_COLORS[class] or "|cffFFFFFF"
-
-
-                        local countString = ""
-                        if counts[name] > 1 then
-                            countString = " |cffaaaaaa×" .. counts[name] .. "|r"
-                        end
-
-                        GameTooltip:AddLine("  • " .. classColor .. name .. "|r" .. countString)
-                    end
-                end
-            else
-                GameTooltip:AddLine("  none")
-            end
-
-
-
-            GameTooltip:Show()
-        end)
-
-
-            icon:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-
-
-            -- Start Roll button
-            local startRollBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
-            startRollBtn:SetSize(70, 22)
-            startRollBtn:SetPoint("LEFT", 40, 0)
-            startRollBtn:SetText("Start Roll")
-            startRollBtn:SetScript("OnClick", function()
-                self:StartRoll(itemLink)
-            end)
-
-            -- End Roll button
-            local endRollBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
-            endRollBtn:SetSize(60, 22)
-            endRollBtn:SetPoint("LEFT", 115, 0)
-            endRollBtn:SetText("End Roll")
-            endRollBtn:SetScript("OnClick", function()
-                self:EndRoll(itemLink)
-            end)
-
-            
-
-            
-
-            -- Discard button
-            local delBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
-            delBtn:SetSize(60, 22)
-            delBtn:SetPoint("LEFT", 180, 0)
-            delBtn:SetText("Discard")
-            delBtn:SetScript("OnClick", function()
-                self.memory[itemLink] = nil
+                for i, data in ipairs(DNG.memory) do if data.id == dropID then table.remove(DNG.memory, i); break end end
                 self:UpdateMemoryUI()
                 self:CheckIfEmpty()
             end)
 
-            -- LC Button
-            local lcBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
-            lcBtn:SetSize(40, 22)
-            lcBtn:SetPoint("LEFT", 245, 0) -- Adjusted position
-            lcBtn:SetText("LC")
-            lcBtn:SetScript("OnClick", function()
-                local dialog = StaticPopup_Show("DNG_LC_CONFIRM", itemLink)
-                if dialog then
-                    dialog.data = { itemLink = itemLink }
-                end
+            -- 6. Discard (X: 300)
+            local delBtn = CreateFrame("Button", nil, line, "UIPanelButtonTemplate")
+            delBtn:SetSize(65, 22)
+            delBtn:SetPoint("LEFT", 318, 0)
+            delBtn:SetText("Discard")
+            delBtn:SetScript("OnClick", function()
+                for i, data in ipairs(DNG.memory) do if data.id == dropID then table.remove(DNG.memory, i); break end end
+                self:UpdateMemoryUI()
+                self:CheckIfEmpty()
             end)
 
-            -- Store references for resizing
-            line.icon = icon
-            line.startRollBtn = startRollBtn
-            line.endRollBtn = endRollBtn
-            line.annBtn = annBtn
-            line.delBtn = delBtn
+            -- Store for resizing
+            line.icon, line.startRollBtn, line.endRollBtn, line.annBtn, line.lcBtn, line.deBtn, line.delBtn = icon, startBtn, endBtn, annBtn, lcBtn, deBtn, delBtn
 
             table.insert(self.content, line)
             y = y - 40
         end
 
-        if count == 0 then
-            local placeholder = self.scrollChild:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-            placeholder:SetPoint("TOPLEFT", 0, -5)
-            placeholder:SetText("No items in memory yet.")
-            table.insert(self.content, placeholder)
-        end
-
-        local minHeight = self.scrollFrame:GetHeight()
-        local totalHeight = math.max(count * 40 + 5, minHeight)
+        local totalHeight = math.max(count * 40 + 5, self.scrollFrame:GetHeight())
         self.scrollChild:SetHeight(totalHeight)
-
-        -- ✔ Apply saved button/icon sizes
         DNG:ApplyButtonSizes()
-        
     end
 
     -- Hook shift-clicks in bags to add items to memory
@@ -443,17 +370,50 @@ end
 
     -- DE label (top-right)
     DNG.deLabel = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    DNG.deLabel:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -10, -10)
+    DNG.deLabel:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 60, -12)
     DNG.deLabel:SetText("")
+
+    --  create the "Set DE" Button
+    local setDEBtn = CreateFrame("Button", nil, self.frame, "UIPanelButtonTemplate")
+    setDEBtn:SetSize(50, 18)
+    -- Position it to the left of the label in the top right
+    setDEBtn:SetPoint("TOPRIGHT", self.frame, "TOPLEFT", 60, -8) 
+    setDEBtn:SetText("Set DE")
+    
+    setDEBtn:SetScript("OnClick", function()
+        -- Logic: If you have a player targeted, set them. 
+        -- If no target, it clears the DE.
+        if UnitExists("target") and UnitIsPlayer("target") then
+            local name = UnitName("target")
+            DNG_Saved.deTarget = name:lower():gsub("^%l", string.upper)
+            print("|cff00ff00[DNG]|r Disenchanter set to: " .. DNG_Saved.deTarget)
+        else
+            DNG_Saved.deTarget = ""
+            print("|cffff0000[DNG]|r Disenchanter cleared.")
+        end
+        
+        DNG:UpdateDELabel() -- Refresh the text immediately
+    end)
+
+    -- Optional Tooltip for the button
+    setDEBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Set Disenchanter")
+        GameTooltip:AddLine("Target a player and click to assign.", 1, 1, 1)
+        GameTooltip:AddLine("Click with no target to clear.", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    setDEBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
     -- Update function
     function DNG:UpdateDELabel()
-        if not DNG.deLabel then return end
+        if not self.deLabel then return end
 
-            if DNG_Saved.deTarget and DNG_Saved.deTarget ~= "" then
-                DNG.deLabel:SetText("|cffaaaaaaDE:|r " .. DNG_Saved.deTarget)
-            else
-         DNG.deLabel:SetText("|cffaaaaaaDE:|r none")
+        -- Check if target exists and is not an empty string
+        if DNG_Saved.deTarget and DNG_Saved.deTarget ~= "" then
+            self.deLabel:SetText("|cffaaaaaaDE:|r |cff00ff00" .. DNG_Saved.deTarget .. "|r")
+        else
+            self.deLabel:SetText("|cffaaaaaaDE:|r |cffff0000none|r")
         end
     end
 

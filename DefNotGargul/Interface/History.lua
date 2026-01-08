@@ -1,7 +1,9 @@
 local DNG = DefNotGargul
+DNG.historyView = "Raids"
 DNG._raidButtons = {}
 DNG._expandedRaids = DNG._expandedRaids or {}
 DNG.historyView = "Raids" -- Options: "Raids", "Summary"
+DNG.summarySortMode = "Loot" -- Options: "Loot", "Class"
 
 
 function DNG:InitializeHistory()
@@ -43,22 +45,25 @@ function DNG:CreateHistoryUI()
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", 0, 0)
 
-    -- Filter Button
-    local filterBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    filterBtn:SetSize(80, 22)
-    filterBtn:SetPoint("TOPRIGHT", -40, -10)
-    filterBtn:SetText("Filter: All")
+    -- Sorting Toggle Button (Replacing the BiS Filter)
+    local sortBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    sortBtn:SetSize(100, 22)
+    sortBtn:SetPoint("TOPRIGHT", -30, -10) -- Right side of the window
+    sortBtn:SetText("Sort: Loot")
     
-    filterBtn:SetScript("OnClick", function(self)
-        if DNG.currentHistoryFilter == "All" then
-            DNG.currentHistoryFilter = "BiSeS"
-            self:SetText("Filter: BiSeS")
+    sortBtn:SetScript("OnClick", function(self)
+        if DNG.summarySortMode == "Loot" then
+            DNG.summarySortMode = "Class"
+            self:SetText("Sort: Class")
         else
-            DNG.currentHistoryFilter = "All"
-            self:SetText("Filter: All")
+            DNG.summarySortMode = "Loot"
+            self:SetText("Sort: Loot")
         end
-        DNG:UpdateHistoryUI() -- Refresh the list immediately
+        DNG:UpdateHistoryUI() -- Refresh the view
     end)
+    
+    -- Store reference so we can hide it when not in Summary view
+    self.sortBtn = sortBtn
 
     -- View Toggle Button (Summary vs Raids)
     local viewBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -77,19 +82,21 @@ function DNG:CreateHistoryUI()
         DNG:UpdateHistoryUI()
     end)
 
-    -- Clear History Button
-    local clearBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-    clearBtn:SetSize(100, 22)
-    -- Position it in the top right, next to where your filter button is
-    clearBtn:SetPoint("TOPRIGHT", -130, -10) 
-    clearBtn:SetText("Clear History")
-    
+    -- 1) Clear History Button (for Raid View)
+    local clearHistoryBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    clearHistoryBtn:SetSize(100, 22)
+    clearHistoryBtn:SetPoint("TOPRIGHT", -130, -10) 
+    clearHistoryBtn:SetText("Clear History")
+    clearHistoryBtn:SetScript("OnClick", function() StaticPopup_Show("DNG_CONFIRM_CLEAR_HISTORY") end)
+    self.clearHistoryBtn = clearHistoryBtn -- Store reference
 
-    
-    clearBtn:SetScript("OnClick", function()
-        -- Show the confirmation popup we defined above
-        StaticPopup_Show("DNG_CONFIRM_CLEAR_HISTORY")
-    end)
+    -- 2) Clear Roster Button (for Summary View)
+    local clearRosterBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    clearRosterBtn:SetSize(100, 22)
+    clearRosterBtn:SetPoint("TOPRIGHT", -130, -10) -- SAME POSITION AS ABOVE
+    clearRosterBtn:SetText("Clear Roster")
+    clearRosterBtn:SetScript("OnClick", function() StaticPopup_Show("DNG_CONFIRM_CLEAR_ROSTER") end)
+    self.clearRosterBtn = clearRosterBtn -- Store reference
 
     -- Export Button
     local exportBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
@@ -121,16 +128,44 @@ function DNG:CreateHistoryUI()
     self.historyFrame = f
     self.historyScrollFrame = scroll
     self.historyScrollChild = scrollChild
+
+    -- (Mr. Bigglesworth) 
+    local mascot = CreateFrame("Button", nil, f)
+    mascot:SetSize(32, 32)
+    mascot:SetPoint("TOPRIGHT", f, "TOPRIGHT", -50, -6) 
+    
+    -- This ensures it stays on top of the background texture
+    mascot:SetFrameLevel(f:GetFrameLevel() + 20)
+    mascot:SetFrameStrata("HIGH")
+
+    mascot:SetNormalTexture("Interface\\AddOns\\DefNotGargul\\Media\\Void.tga")
+    
+
+
+    mascot:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine("Mr. Bigglesworth")
+        GameTooltip:AddLine("|cff00ff00'Meow!'|r", 1, 1, 1)
+        GameTooltip:AddLine("Naxxramas Loot Supervisor", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    mascot:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    mascot:SetScript("OnClick", function()
+        PlaySoundFile("Sound\\Creature\\Cat\\CatMeow.wav")
+        print("|cff66ccff[Void]:|r Meow! (Kel'Thuzad is watching your loot choices!)")
+    end)
+
+    self.historyMascot = mascot
 end
 
-------------------------------------------------------------
+
 -- Update History UI
-------------------------------------------------------------
 function DNG:UpdateHistoryUI()
     if not self.historyScrollChild then return end
 
     ------------------------------------------------------------
-    -- 1) FULL CLEANUP (Hiding everything before redrawing)
+    -- 1) FULL CLEANUP (Moved to top so we start with a blank slate)
     ------------------------------------------------------------
     for _, btn in pairs(self._raidButtons or {}) do
         btn:Hide()
@@ -139,13 +174,38 @@ function DNG:UpdateHistoryUI()
         end
     end
 
-    -- Hide Summary headers
+    -- Hide Summary headers and Mascot
     if self._summaryHeader then self._summaryHeader:Hide() end
-    if self._othersHeader then self._othersHeader:Hide() end -- ADD THIS LINE
+    if self._othersHeader then self._othersHeader:Hide() end
+    if self.historyMascot then self.historyMascot:Hide() end -- Hide cat here first
 
     -- Hide all Summary Player Lines
     if self._playerLines then
         for _, line in ipairs(self._playerLines) do line:Hide() end
+    end
+
+
+    ------------------------------------------------------------
+    -- 2) RESET UI VIEW STATE (Now we show only what is needed)
+    ------------------------------------------------------------
+    if self.historyView == "Raids" then
+        if self.clearHistoryBtn then self.clearHistoryBtn:Show() end
+        if self.clearRosterBtn then self.clearRosterBtn:Hide() end
+        
+        -- NOW the cat will stay visible because the cleanup is finished
+        if self.historyMascot then 
+            self.historyMascot:Show() 
+        end
+    else
+        if self.clearHistoryBtn then self.clearHistoryBtn:Hide() end
+        if self.clearRosterBtn then self.clearRosterBtn:Show() end
+        
+        if self.historyMascot then self.historyMascot:Hide() end
+    end
+    
+    -- Show/Hide Sort button based on view
+    if self.sortBtn then
+        if self.historyView == "Summary" then self.sortBtn:Show() else self.sortBtn:Hide() end
     end
 
     local y = -5
@@ -226,8 +286,10 @@ function DNG:UpdateHistoryUI()
                                     GameTooltip:AddLine(" ")
                                     GameTooltip:AddLine("Rolls:")
                                     for _, r in ipairs(data.rolls) do
-                                        local color = DNG.CLASS_COLORS[r.class] or "|cffFFFFFF"
-                                        GameTooltip:AddLine(color .. r.player .. "|r — " .. r.roll)
+                                        local rClassKey = (r.class or "NONE"):upper()
+                                        local rColor = DNG.CLASS_COLORS[rClassKey] or "|cffFFFFFF"
+
+                                        GameTooltip:AddLine(rColor .. r.player .. "|r — " .. r.roll)
                                     end
                                 end
                                 GameTooltip:Show()
@@ -254,7 +316,8 @@ function DNG:UpdateHistoryUI()
                         }
 
                         local winnerName = item.winner or "Unknown"
-                        local classColor = DNG.CLASS_COLORS[item.winnerClass] or "|cffFFFFFF"
+                        local classKey = (item.winnerClass or "NONE"):upper()
+                        local classColor = DNG.CLASS_COLORS[classKey] or "|cffFFFFFF"
                         local disp = iLink or iName or ("Item:"..itemID)
                         if isBiS then disp = disp .. " |cffffd100[BiS]|r" end
 
@@ -314,20 +377,34 @@ function DNG:UpdateHistoryUI()
         self._playerLines = self._playerLines or {}
         local pIndex = 0
 
-        -- Helper function to draw lines
+        -- Helper function to draw lines with dynamic sorting
         local function DrawPlayerLines(dataList, isMainGroup)
-            -- Sort: Alphabetical for roster, by Count for others
             local sorted = {}
             for name, data in pairs(dataList) do table.insert(sorted, {name = name, data = data}) end
-            if isMainGroup then
-                table.sort(sorted, function(a,b) return a.name < b.name end)
-            else
-                table.sort(sorted, function(a,b) return a.data.count > b.data.count end)
-            end
+
+            -- NEW SORTING LOGIC
+            table.sort(sorted, function(a, b)
+                if DNG.summarySortMode == "Class" then
+                    -- Primary Sort: Class Name
+                    if a.data.class ~= b.data.class then
+                        return (a.data.class or "") < (b.data.class or "")
+                    end
+                    -- Secondary Sort: Player Name (Alphabetical)
+                    return a.name < b.name
+                else
+                    -- Primary Sort: Items Won (Highest first)
+                    if a.data.count ~= b.data.count then
+                        return a.data.count > b.data.count
+                    end
+                    -- Secondary Sort: Player Name
+                    return a.name < b.name
+                end
+            end)
 
             for _, pInfo in ipairs(sorted) do
                 pIndex = pIndex + 1
                 local line = self._playerLines[pIndex]
+                
                 if not line then
                     line = CreateFrame("Button", nil, self.historyScrollChild)
                     line:SetSize(self.historyScrollChild:GetWidth() - 20, 20)
@@ -374,6 +451,8 @@ function DNG:UpdateHistoryUI()
     end
 
     self.historyScrollChild:SetHeight(math.max(-y + 10, self.historyScrollFrame:GetHeight()))
+
+
 end
 
 ------------------------------------------------------------
@@ -492,24 +571,90 @@ function DNG:ShowExportWindow(text)
 end
 
 function DNG:GenerateCSV()
-    local csv = "Raid,Date,Winner,Item\n" -- Header row
+    -- Updated Header to include ItemName
+    local csv = "Raid,Date,Winner,ItemID,ItemName\n" 
     
-    -- Iterate through raids
     for raidName, raidData in pairs(self.History.raids or {}) do
         local dateStr = date("%Y-%m-%d", raidData.timestamp or time())
         
-        -- Iterate through items in that raid
         for _, item in ipairs(raidData.items or {}) do
             local winner = item.winner or "Unknown"
+            
+            -- 1) Get the Item ID
             local itemID = item.itemID or (item.itemLink and item.itemLink:match("item:(%d+)")) or "0"
             
-            -- Clean the raid name of commas so it doesn't break the CSV
-            local cleanRaidName = raidName:gsub(",", "") 
+            -- 2) Get the Item Name
+            -- We try to get it from the link first, then ID
+            local itemName = GetItemInfo(item.itemLink or item.itemID) or "Unknown Item"
             
-            -- Format: Raid, Date, Player, ItemID
-            csv = csv .. cleanRaidName .. "," .. dateStr .. "," .. winner .. "," .. itemID .. "\n"
+            -- 3) Sanitization (CRITICAL for CSV)
+            -- Remove commas from Raid Name and Item Name so they don't break columns
+            local cleanRaidName = raidName:gsub(",", "") 
+            local cleanItemName = itemName:gsub(",", "")
+            
+            -- 4) Format: Raid, Date, Winner, ItemID, ItemName
+            csv = csv .. cleanRaidName .. "," .. dateStr .. "," .. winner .. "," .. itemID .. "," .. cleanItemName .. "\n"
         end
     end
     
     return csv
+end
+
+StaticPopupDialogs["DNG_CONFIRM_CLEAR_ROSTER"] = {
+    text = "Are you sure you want to wipe the ENTIRE 25-man roster? This will not delete loot history, only the list of players.",
+    button1 = "Yes, Clear Roster",
+    button2 = "Cancel",
+    OnAccept = function()
+        -- Wipe the roster table
+        wipe(DNG_Saved.Roster)
+        
+        -- Refresh the UI
+        DNG:UpdateHistoryUI()
+        print("|cff00ff00[DNG]|r Roster has been cleared.")
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    showAlert = true,
+}
+
+function DNG:LogLootAssignment(itemLink, winnerName, winnerClass, rolls, note, dropID)
+    local raidName = GetRealZoneText() or "Unknown Raid"
+    local raidKey = raidName .. " (" .. date("%m/%d/%y") .. ")"
+
+    if not self.History.raids[raidKey] then
+        self.History.raids[raidKey] = { timestamp = time(), items = {} }
+    end
+
+    local itemsList = self.History.raids[raidKey].items
+    local existingEntry = nil
+
+    -- Check if this specific drop instance (dropID) already exists
+    if dropID then
+        for _, entry in ipairs(itemsList) do
+            if entry.dropID == dropID then
+                existingEntry = entry
+                break
+            end
+        end
+    end
+
+    if existingEntry then
+        -- Update existing (Re-roll)
+        existingEntry.winner = winnerName
+        existingEntry.winnerClass = winnerClass
+        existingEntry.rolls = rolls
+    else
+        -- Create new (New item or first time logging)
+        table.insert(itemsList, {
+            dropID = dropID, -- Save the unique ID here
+            itemLink = itemLink,
+            winner = winnerName,
+            winnerClass = winnerClass,
+            rolls = rolls,
+            time = time()
+        })
+    end
+    
+    
 end
